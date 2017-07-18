@@ -1,4 +1,6 @@
 
+#转录组入门（1）: 工作环境准备
+
 生信技能树的转录组学习开班了, 第一个任务是[安装软件](http://www.biotrainee.com/forum.php?mod=viewthread&tid=1742#lastpost), 于是我花了一个下午时间和Linux斗智斗勇。
 
 ## 系统准备
