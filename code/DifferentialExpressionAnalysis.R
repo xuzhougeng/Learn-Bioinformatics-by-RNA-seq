@@ -16,7 +16,6 @@ row.names(raw_count_filt) <- ENSEMBL
 
 ## the sample problem
 delta_mean <- abs(mean(raw_count_filt$rep1) - mean(raw_count_filt$rep2))
-
 sampleNum <- length(raw_count_filt$control)
 sampleMean <- mean(raw_count_filt$control)
 control2 <- integer(sampleNum)
@@ -40,7 +39,7 @@ dds <- DESeqDataSetFromMatrix(countData, DataFrame(condition), design= ~ conditi
 
 dds <- DESeq(dds)
 
-res <- results(dds)
+res <- results(dds, contrast = c("condition","control","KD"))
 summary(res)
 mcols(res, use.names = TRUE)
 
@@ -60,7 +59,7 @@ with(res[topGene, ], {
   text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
 })
 
-res.sig <- subset(res, padj < 0.05)
+sig.deseq2 <- subset(res, padj < 0.05)
 
 
 ## differential expression analysis with edgeR
@@ -87,6 +86,10 @@ design
 
 ### dispersion
 genelist.Disp <- estimateDisp(genelist.norm, design, robust = TRUE)
+summary(genelist.Disp$common.dispersion)
+summary(genelist.Disp$trended.dispersion)
+summary(genelist.Disp$tagwise.dispersion)
+
 plotBCV(genelist.Disp)
 fit <- glmQLFit(genelist.Disp, design, robust=TRUE)
 head(fit$coefficients)
@@ -95,3 +98,62 @@ plotQLDisp(fit)
 
 ## DGE analysis
 cntr.vs.KD <- makeContrasts(control-KD, levels=design)
+res <- glmQLFTest(fit, contrast=cntr.vs.KD)
+topTags(res,n=10)
+is.de <- decideTestsDGE(res)
+summary(is.de)
+plotMD(res, status=is.de, values=c(1,-1), col=c("red","blue"),
+       legend="topright")
+
+tr <- glmTreat(fit, contrast=cntr.vs.KD, lfc=log2(1.5))
+topTags(tr)
+is.de <- decideTestsDGE(tr)
+summary(is.de)
+plotMD(tr, status=is.de, values=c(1,-1), col=c("red","blue"),
+       legend="topright")
+
+sig.edger <- res$table[p.adjust(res$table$PValue, method = "BH") < 0.01, ]
+
+
+## differential expression analysis with LIMMA
+library(edgeR)
+library(limma)
+group <- factor(c("control","KD","KD","control"))
+genelist <- DGEList(counts=raw_count_filt[,2:5], group = group)
+
+###filter base  use CPM
+keep <- rowSums(cpm(genelist) > 0.5 ) >=2
+table(keep)
+genelist.filted <- genelist[keep, ,keep.lib.sizes=FALSE]
+
+### normalization
+genelist.norm <- calcNormFactors(genelist.filted, method = "TMM")
+
+
+### DGE with limma-trend
+design <- model.matrix(~0+group)
+colnames(design) <- levels(group)
+logCPM <- cpm(genelist.norm, log=TRUE, prior.count=3)
+fit <- lmFit(logCPM, design)
+fit <- eBayes(fit, trend=TRUE)
+topTable(fit, coef=ncol(design))
+
+### DGE with voom
+v <- voom(genelist.norm, design, plot=TRUE)
+#v <- voom(counts, design, plot=TRUE)
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+all <- topTable(fit, coef=ncol(design), number=10000)
+
+sig.limma <- all[all$adj.P.Val < 0.01, ]
+
+fit <- treat(fit, lfc=log2(1.2))
+topTreat(fit, coef=ncol(design))
+all <- topTreat(fit, coef=ncol(design), number=10000)
+sig.limma <- all[all$adj.P.Val < 0.01, ]
+
+## difference between different packages
+library(UpSetR)
+input <- fromList(list(edgeR=rownames(sig.edger), DESeq2=rownames(sig.deseq2), limma=rownames(sig.limma)))
+
+
