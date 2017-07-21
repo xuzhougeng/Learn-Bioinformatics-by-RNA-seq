@@ -157,3 +157,53 @@ library(UpSetR)
 input <- fromList(list(edgeR=rownames(sig.edger), DESeq2=rownames(sig.deseq2), limma=rownames(sig.limma)))
 
 
+
+## enrichment analysis
+BiocInstaller::biocLite("clusterProfiler")
+library(clusterProfiler)
+library(AnnotationHub)
+ah <- AnnotationHub()
+query(ah, 'org.HS.eg.db')
+org.hs <- ah[['AH53766']]
+
+deseq2.sig <- subset(res, padj < 0.05 & abs(log2FoldChange) > 1)
+dim(deseq2.sig)
+?enrichGO
+
+ego <- enrichGO(
+  gene = row.names(deseq2.sig),
+  OrgDb = org.hs,
+  keytype = "ENSEMBL",
+  ont = "MF"
+)
+dotplot(ego,font.size=5)
+enrichMap(ego, vertex.label.cex=1.2, layout=igraph::layout.kamada.kawai)
+cnetplot(ego, foldChange=deseq2.sig$log2FoldChange)
+plotGOgraph(ego)
+
+
+### GSEA
+genelist <- sig.deseq2$log2FoldChange
+names(genelist) <- rownames(sig.deseq2)
+genelist <- sort(genelist, decreasing = TRUE)
+gsemf <- gseGO(genelist, 
+      OrgDb = org.hs,
+      keyType = "ENSEMBL",
+      ont="MF"
+      )
+head(gsemf)
+
+gseaplot(gsemf, geneSetID="GO:0004871")
+
+### KEGG enrichment 
+library(clusterProfiler)
+gene_list <- mapIds(org.hs, keys = row.names(deseq2.sig),
+                       column = "ENTREZID", keytype = "ENSEMBL" )
+
+kk <- enrichKEGG(gene_list, organism="hsa", 
+                 keyType = "ncbi-geneid",
+                 pvalueCutoff=0.05, pAdjustMethod="BH", 
+                 qvalueCutoff=0.1)
+head(summary(kk))
+
+dotplot(kk)
